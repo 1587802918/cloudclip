@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloudClip | 极简云端剪切板</title>
+    <style>
+        :root {
+            --primary-color: #007AFF;
+            --primary-hover: #005bb5;
+            --bg-color: #f5f5f7;
+            --card-bg: rgba(255, 255, 255, 0.85);
+            --text-color: #1d1d1f;
+            --text-muted: #86868b;
+            --border-color: #d2d2d7;
+            --shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+            --radius: 16px;
+            --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            /* 简约的背景纹理或渐变 */
+            background-image: radial-gradient(circle at 50% 0%, #ffffff 0%, #f5f5f7 70%);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 40px;
+            /* 进场动画 */
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeInUp 0.8s ease forwards;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+
+        .status {
+            font-size: 13px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background-color: #34c759;
+            border-radius: 50%;
+        }
+
+        .status.syncing::before {
+            background-color: #ff9500;
+            animation: pulse 1.5s infinite;
+        }
+
+        textarea {
+            width: 100%;
+            height: 40vh;
+            min-height: 300px;
+            padding: 20px;
+            font-size: 16px;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            resize: none;
+            transition: var(--transition);
+            font-family: inherit;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+        }
+
+        textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        .actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 16px;
+            margin-top: 24px;
+        }
+
+        button {
+            padding: 12px 28px;
+            font-size: 15px;
+            font-weight: 500;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn-secondary {
+            background-color: transparent;
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background-color: rgba(0,0,0,0.03);
+            transform: translateY(-2px);
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+            box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 122, 255, 0.4);
+        }
+
+        /* 提示框 (Toast) */
+        #toast {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background-color: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 14px;
+            opacity: 0;
+            transition: var(--transition);
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        #toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        /* 动画定义 */
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 149, 0, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(255, 149, 0, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 149, 0, 0); }
+        }
+
+        /* 移动端适配 */
+        @media (max-width: 600px) {
+            .container { padding: 24px; }
+            .actions { flex-direction: column-reverse; }
+            button { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>CloudClip</h1>
+            <span class="status" id="status-indicator">本地就绪</span>
+        </header>
+        
+        <textarea id="clipboard-text" placeholder="在此输入或粘贴需要共享的文本..."></textarea>
+        
+        <div class="actions">
+            <button id="btn-copy" class="btn-secondary">复制全文</button>
+            <button id="btn-sync" class="btn-primary">保存 / 同步</button>
+        </div>
+    </div>
+
+    <div id="toast">操作成功</div>
+
+  <script>
+    const textArea = document.getElementById('clipboard-text');
+    const btnCopy = document.getElementById('btn-copy');
+    const btnSync = document.getElementById('btn-sync');
+    const toast = document.getElementById('toast');
+    const statusIndicator = document.getElementById('status-indicator');
+    // --- 访问加密逻辑开始 ---
+    const ACCESS_CODE = '771102'; // 【请在这里修改你自己的暗号】
+    
+    (function() {
+        const checkAuth = () => {
+            const savedCode = localStorage.getItem('clip_auth');
+            if (savedCode === ACCESS_CODE) return true;
+    
+            const input = prompt('请输入访问暗号：');
+            if (input === ACCESS_CODE) {
+                localStorage.setItem('clip_auth', input);
+                return true;
+            }
+            return false;
+        };
+    
+        if (!checkAuth()) {
+            alert('暗号错误，拒绝访问！');
+            document.body.innerHTML = '<h1 style="text-align:center;margin-top:100px;color:#666;">🔒 访问受限</h1>';
+            window.stop(); // 停止加载后续脚本
+        }
+    })();
+    // --- 访问加密逻辑结束 ---
+    // 1. 页面加载时从服务器拉取最新文本
+    window.addEventListener('DOMContentLoaded', async () => {
+        statusIndicator.textContent = '获取中...';
+        try {
+            const res = await fetch('/api/clip');
+            const data = await res.json();
+            textArea.value = data.content;
+            statusIndicator.textContent = '已就绪 (云端)';
+        } catch (err) {
+            statusIndicator.textContent = '连接云端失败';
+            console.error('获取数据失败', err);
+        }
+    });
+
+    // 2. 复制功能 (保持不变)
+    btnCopy.addEventListener('click', async () => {
+        if (!textArea.value.trim()) {
+            showToast('没有可复制的文本 😅');
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(textArea.value);
+            showToast('已复制到剪切板 ✨');
+        } catch (err) {
+            textArea.select();
+            document.execCommand('copy');
+            showToast('已复制到剪切板 ✨');
+        }
+    });
+
+    // 3. 真实同步/保存到后端
+    btnSync.addEventListener('click', async () => {
+        const text = textArea.value;
+        
+        statusIndicator.textContent = '同步中...';
+        statusIndicator.classList.add('syncing');
+        btnSync.disabled = true;
+        btnSync.textContent = '正在保存...';
+
+        try {
+            // 发送 POST 请求到服务器
+            const res = await fetch('/api/clip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: text })
+            });
+            
+            if (res.ok) {
+                statusIndicator.textContent = '已同步云端';
+                showToast('文本已成功保存到云端 ☁️');
+            } else {
+                throw new Error('Server returned an error');
+            }
+        } catch (err) {
+            statusIndicator.textContent = '同步失败';
+            showToast('保存失败，请检查网络 ❌');
+            console.error(err);
+        } finally {
+            // 恢复 UI 状态
+            statusIndicator.classList.remove('syncing');
+            btnSync.disabled = false;
+            btnSync.textContent = '保存 / 同步';
+        }
+    });
+
+    // Toast 提示框函数
+    let toastTimeout;
+    function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add('show');
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    // 快捷键保存
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            btnSync.click();
+        }
+    });
+</script>
+</body>
+</html>

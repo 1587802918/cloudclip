@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CloudClip | 全能云中转</title>
+    <style>
+        :root {
+            --primary-color: #0A84FF;
+            --primary-hover: #0070E0;
+            --danger-color: #FF453A;
+            --bg-color: #F2F2F7;
+            --card-bg: rgba(255, 255, 255, 0.65);
+            --text-color: #1C1C1E;
+            --text-muted: #8E8E93;
+            --border-color: rgba(60, 60, 67, 0.1);
+            --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.04);
+            --shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.08);
+            --radius: 24px;
+            --transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh; padding: 2vw;
+            background-image: radial-gradient(circle at 15% 50%, rgba(255,255,255,0.8) 0%, transparent 50%), 
+                              radial-gradient(circle at 85% 30%, rgba(229,229,234,0.6) 0%, transparent 50%);
+            background-attachment: fixed;
+            /* 适配苹果刘海屏与底部横条 */
+            padding-top: env(safe-area-inset-top, 20px);
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+        }
+
+        /* --- 🔒 密码层 --- */
+        #auth-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(242, 242, 247, 0.4); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 9999; transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        #auth-overlay.hidden { opacity: 0; visibility: hidden; }
+
+        .auth-card {
+            background: rgba(255,255,255,0.8); padding: 40px 32px; border-radius: var(--radius);
+            box-shadow: var(--shadow-lg); text-align: center; width: 90%; max-width: 340px;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+        }
+        .auth-card h2 { font-size: 22px; font-weight: 600; margin-bottom: 8px; }
+        .auth-card p { font-size: 14px; color: var(--text-muted); margin-bottom: 28px; }
+        .auth-input-group { display: flex; flex-direction: column; gap: 16px; }
+        .auth-card input {
+            width: 100%; padding: 16px; font-size: 20px; text-align: center; letter-spacing: 6px;
+            border: 1px solid var(--border-color); border-radius: 16px; background: rgba(255, 255, 255, 0.5); outline: none; transition: var(--transition);
+        }
+        .auth-card input:focus { background: white; border-color: var(--primary-color); box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.15); }
+        .btn-unlock {
+            padding: 16px; font-size: 16px; font-weight: 600; color: white; background: var(--primary-color);
+            border: none; border-radius: 16px; cursor: pointer; transition: var(--transition);
+            display: flex; justify-content: center; align-items: center; gap: 8px; box-shadow: 0 8px 16px rgba(10, 132, 255, 0.25);
+        }
+        .btn-unlock:active { transform: scale(0.96); }
+        .error-hint { color: var(--danger-color); font-size: 13px; margin-top: 12px; opacity: 0; transition: opacity 0.3s; }
+
+        /* --- 📝 主控台布局 --- */
+        .dashboard {
+            width: 100%; max-width: 1100px; /* 加宽以适应左右分栏 */
+            background: var(--card-bg); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);
+            border-radius: 30px; box-shadow: var(--shadow-lg); padding: 40px;
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            opacity: 0; transform: translateY(20px) scale(0.98); transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+            
+            /* ✨ 核心网格布局 ✨ */
+            display: grid;
+            grid-template-columns: 1fr 1.5fr; /* 左侧占1份，右侧占1.5份 */
+            grid-template-rows: auto 1fr;
+            gap: 30px;
+        }
+        .dashboard.active { opacity: 1; transform: translateY(0) scale(1); }
+
+        /* 头部跨列 */
+        header { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); }
+        h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+        .status { font-size: 13px; font-weight: 500; color: var(--text-muted); display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(0,0,0,0.03); border-radius: 20px; }
+        .status::before { content: ''; width: 8px; height: 8px; background-color: #34C759; border-radius: 50%; box-shadow: 0 0 8px rgba(52, 199, 89, 0.4); }
+
+        /* 左栏：文件与图片 */
+        .left-panel { display: flex; flex-direction: column; gap: 20px; height: 100%; }
+        
+        .upload-card {
+            flex: 1; border: 2px dashed rgba(60, 60, 67, 0.15); border-radius: 20px;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(255,255,255,0.4); cursor: pointer; transition: var(--transition);
+            position: relative; overflow: hidden; min-height: 180px;
+        }
+        .upload-card:hover { border-color: var(--primary-color); background: rgba(10, 132, 255, 0.03); transform: translateY(-2px); }
+        .placeholder { padding: 20px; color: var(--text-muted); font-size: 14px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .placeholder svg { width: 36px; height: 36px; opacity: 0.6; color: var(--primary-color); }
+        #preview-img { width: 100%; height: 100%; object-fit: cover; display: none; position: absolute; top:0; left:0; }
+
+        /* ✨ 高定版文件展示区 ✨ */
+        #file-info-area { display: none; cursor: default; background: rgba(255,255,255,0.6); border-style: solid; }
+        #file-info-area:hover { transform: none; border-color: rgba(60, 60, 67, 0.15); background: rgba(255,255,255,0.6); }
+        .file-meta { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px; text-align: center; width: 100%; }
+        #file-name-display { font-size: 16px; font-weight: 600; color: var(--text-color); word-break: break-all; max-width: 90%; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        #file-size-display { font-size: 12px; color: var(--text-muted); }
+        
+        /* 药丸形操作按钮 */
+        .pill-actions { display: flex; gap: 12px; margin-top: 12px; }
+        .pill-btn {
+            display: flex; align-items: center; gap: 6px; padding: 10px 20px; border-radius: 30px;
+            font-size: 13px; font-weight: 600; text-decoration: none; border: none; cursor: pointer; transition: var(--transition);
+        }
+        .pill-download { background: rgba(10, 132, 255, 0.1); color: var(--primary-color); }
+        .pill-download:hover { background: rgba(10, 132, 255, 0.2); transform: scale(1.05); }
+        .pill-delete { background: rgba(255, 69, 58, 0.1); color: var(--danger-color); }
+        .pill-delete:hover { background: rgba(255, 69, 58, 0.2); transform: scale(1.05); }
+
+        /* 右栏：文本区 */
+        .right-panel { display: flex; flex-direction: column; height: 100%; }
+        textarea {
+            flex: 1; width: 100%; min-height: 400px; padding: 24px; font-size: 16px; line-height: 1.6;
+            border: 1px solid var(--border-color); border-radius: 20px; background: rgba(255,255,255,0.5);
+            resize: none; outline: none; transition: var(--transition); color: var(--text-color); box-shadow: inset 0 2px 6px rgba(0,0,0,0.02);
+        }
+        textarea:focus { background: white; border-color: var(--primary-color); box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.1), inset 0 2px 6px rgba(0,0,0,0.02); }
+        textarea.receiving { background: rgba(52, 199, 89, 0.08); border-color: #34C759; }
+
+        .text-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+        .btn-text { padding: 12px 24px; font-size: 14px; font-weight: 600; border-radius: 14px; border: none; cursor: pointer; transition: var(--transition); display: flex; align-items: center; gap: 6px; }
+        .btn-secondary { background: rgba(0,0,0,0.05); color: var(--text-color); }
+        .btn-secondary:hover { background: rgba(0,0,0,0.08); }
+        .btn-primary { background: var(--text-color); color: var(--bg-color); }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.15); }
+
+        #toast { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(100px); background: rgba(28, 28, 30, 0.9); backdrop-filter: blur(10px); color: white; padding: 14px 28px; border-radius: 30px; font-size: 14px; font-weight: 500; opacity: 0; transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 10px 30px rgba(0,0,0,0.15); z-index: 10000; }
+        #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+        /* 📱 手机端优雅折叠 */
+        @media (max-width: 800px) { 
+            body { padding: 0; }
+            .dashboard { 
+                grid-template-columns: 1fr; /* 变成单列上下结构 */
+                border-radius: 0; min-height: 100vh; padding: 24px 20px; border: none; box-shadow: none; 
+            }
+            header { margin-bottom: 0; padding-top: env(safe-area-inset-top, 10px); }
+            .left-panel { flex-direction: row; height: 140px; } /* 手机上文件和图片变成左右并排的小方块 */
+            .upload-card { min-height: 140px; border-radius: 16px; }
+            .placeholder svg { width: 28px; height: 28px; }
+            .placeholder span.desc { display: none; } /* 手机上隐藏繁琐文字 */
+            .file-meta { padding: 10px; }
+            .pill-actions { flex-direction: column; gap: 6px; width: 100%; }
+            .pill-btn { justify-content: center; width: 100%; padding: 8px; font-size: 12px; }
+            textarea { min-height: 30vh; border-radius: 16px; font-size: 16px !important; /* 强制防缩放 */ }
+            .text-actions { flex-direction: column-reverse; }
+            .btn-text { width: 100%; justify-content: center; padding: 14px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="auth-overlay">
+        <div class="auth-card">
+            <h2>CloudClip</h2>
+            <p>请输入安全密钥以连接云端</p>
+            <div class="auth-input-group">
+                <input type="password" id="auth-input" placeholder="••••••" autofocus>
+                <button id="auth-btn" class="btn-unlock">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    安全进入
+                </button>
+            </div>
+            <div id="auth-error" class="error-hint">密钥错误，请重新输入</div>
+        </div>
+    </div>
+
+    <div class="dashboard" id="main-container">
+        <header>
+            <h1>CloudClip.</h1>
+            <span class="status" id="status-indicator">正在握手...</span>
+        </header>
+
+        <div class="left-panel">
+            <div class="upload-card" id="file-drop-zone" onclick="document.getElementById('general-file-input').click()">
+                <div class="placeholder">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                    <span style="font-weight: 500;">传输文件</span>
+                    <span class="desc" style="font-size: 12px; opacity: 0.7;">单文件覆盖机制</span>
+                </div>
+                <input type="file" id="general-file-input" hidden>
+            </div>
+            
+            <div class="upload-card" id="file-info-area">
+                <div class="file-meta">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-color); margin-bottom: 5px;"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+                    <span id="file-name-display">文件名</span>
+                    <span id="file-meta-display" id="file-size-display">大小</span>
+                    <div class="pill-actions">
+                        <a id="file-download-link" class="pill-btn pill-download" download>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            下载
+                        </a>
+                        <button id="btn-delete-file" class="pill-btn pill-delete">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            删除
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="upload-card" id="image-drop-zone" onclick="document.getElementById('file-input').click()">
+                <div id="upload-hint" class="placeholder">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                    <span style="font-weight: 500;">发送图片</span>
+                    <span class="desc" style="font-size: 12px; opacity: 0.7;">单图片覆盖机制</span>
+                </div>
+                <img id="preview-img" src="" alt="预览">
+                <input type="file" id="file-input" hidden accept="image/*">
+            </div>
+        </div>
+        
+        <div class="right-panel">
+            <textarea id="clipboard-text" placeholder="输入灵感，2秒后云端自动同步..."></textarea>
+            
+            <div class="text-actions">
+                <button id="btn-copy" class="btn-text btn-secondary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    提取文本
+                </button>
+                <button id="btn-sync" class="btn-text btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    立即同步
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        const ACCESS_CODE = '771102'; 
+        const authInput = document.getElementById('auth-input');
+        const authBtn = document.getElementById('auth-btn');
+        const authError = document.getElementById('auth-error');
+        const textArea = document.getElementById('clipboard-text');
+        const statusIndicator = document.getElementById('status-indicator');
+        const previewImg = document.getElementById('preview-img');
+        const uploadHint = document.getElementById('upload-hint');
+
+        const fileDropZone = document.getElementById('file-drop-zone');
+        const fileInfoArea = document.getElementById('file-info-area');
+        const fileNameDisplay = document.getElementById('file-name-display');
+        const fileMetaDisplay = document.getElementById('file-meta-display');
+        const fileDownloadLink = document.getElementById('file-download-link');
+
+        let socket;
+        let syncTimer;
+        let isTyping = false; 
+
+        // 鉴权逻辑
+        function init() { if (localStorage.getItem('clip_auth') === ACCESS_CODE) unlock(); }
+        function verifyAuth() {
+            if (authInput.value === ACCESS_CODE) {
+                localStorage.setItem('clip_auth', ACCESS_CODE);
+                authBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> 验证成功'; 
+                setTimeout(unlock, 400);
+            } else {
+                authError.style.opacity = '1';
+                authInput.style.borderColor = 'var(--danger-color)';
+                authInput.value = '';
+                authBtn.style.transform = 'translateX(-5px)';
+                setTimeout(() => authBtn.style.transform = 'translateX(5px)', 100);
+                setTimeout(() => authBtn.style.transform = 'translateX(0)', 200);
+                setTimeout(() => { authError.style.opacity = '0'; authInput.style.borderColor = 'var(--border-color)'; }, 2000);
+            }
+        }
+
+        authInput.addEventListener('keypress', e => { if (e.key === 'Enter') verifyAuth(); });
+        authBtn.addEventListener('click', verifyAuth);
+
+        function unlock() {
+            document.getElementById('auth-overlay').classList.add('hidden');
+            document.getElementById('main-container').classList.add('active');
+            fetchData(); connectWebSocket(); 
+        }
+
+        // WebSocket 核心
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            socket = new WebSocket(`${protocol}//${window.location.host}`);
+
+            socket.onopen = () => { statusIndicator.innerHTML = '已连接云端 '; statusIndicator.classList.remove('offline'); };
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'text') {
+                    if (isTyping) return; 
+                    textArea.value = data.content;
+                    textArea.classList.add('receiving');
+                    setTimeout(() => textArea.classList.remove('receiving'), 500);
+                } else if (data.type === 'image') {
+                    showImage(data.url); showToast('已接收最新图片');
+                } else if (data.type === 'file') {
+                    if (data.url) { showFileInfoOnUI({originalName: data.name, url: data.url}); showToast('已接收最新文件'); } 
+                    else { clearFileInfoOnUI(); showToast('文件已被清空'); }
+                }
+            };
+            socket.onclose = () => { statusIndicator.textContent = '重连中...'; statusIndicator.classList.add('offline'); setTimeout(connectWebSocket, 3000); };
+        }
+
+        // 基础数据加载
+        async function fetchData() {
+            try {
+                const [textRes, imgRes, fileRes] = await Promise.all([ fetch('/api/clip'), fetch('/api/image'), fetch('/api/file_info') ]);
+                const textData = await textRes.json(); const imgData = await imgRes.json(); const fileData = await fileRes.json();
+                textArea.value = textData.content || '';
+                if(imgData.url) showImage(imgData.url);
+                if(fileData) showFileInfoOnUI(fileData);
+            } catch (err) {}
+        }
+
+        // 文本同步逻辑
+        textArea.addEventListener('input', () => {
+            isTyping = true; clearTimeout(syncTimer);
+            syncTimer = setTimeout(async () => { await saveText(); isTyping = false; }, 2000);
+        });
+
+        async function saveText() {
+            statusIndicator.innerHTML = '保存中...';
+            try {
+                await fetch('/api/clip', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: textArea.value }) });
+                statusIndicator.innerHTML = '已云端同步 <span style="font-size:10px; opacity:0.5;">●</span>';
+            } catch(e) { showToast('保存失败 ❌'); }
+        }
+
+        // 图片处理
+        function showImage(url) { previewImg.src = url + '?t=' + new Date().getTime(); previewImg.style.display = 'block'; uploadHint.style.display = 'none'; }
+        document.getElementById('file-input').onchange = async (e) => {
+            const file = e.target.files[0]; if (!file) return;
+            const formData = new FormData(); formData.append('image', file);
+            showToast('上传中...');
+            const res = await fetch('/api/upload', { method: 'POST', body: formData });
+            const data = await res.json(); showImage(data.url); showToast('上传完成');
+        };
+
+        // 文件处理
+        function showFileInfoOnUI(fileData) {
+            fileNameDisplay.textContent = fileData.originalName;
+            if (fileData.size) { fileMetaDisplay.textContent = `${(fileData.size / 1024 / 1024).toFixed(2)} MB`; } 
+            else { fileMetaDisplay.textContent = '准备就绪'; }
+            fileDownloadLink.href = fileData.url; fileDownloadLink.setAttribute('download', fileData.originalName);
+            fileDropZone.style.display = 'none'; fileInfoArea.style.display = 'flex';
+        }
+
+        function clearFileInfoOnUI() { fileInfoArea.style.display = 'none'; fileDropZone.style.display = 'flex'; }
+        
+        document.getElementById('general-file-input').onchange = async (e) => {
+            const file = e.target.files[0]; if (!file) return;
+            const formData = new FormData(); formData.append('file', file);
+            showToast('上传中...');
+            try {
+                const res = await fetch('/api/file_upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                showFileInfoOnUI({originalName: data.name, url: data.url}); showToast('上传完成');
+            } catch (err) { showToast('上传失败'); }
+        };
+
+        document.getElementById('btn-delete-file').onclick = async () => {
+            try { const res = await fetch('/api/file', { method: 'DELETE' }); if (res.ok) { clearFileInfoOnUI(); showToast('文件已删除'); } } 
+            catch(e) { showToast('删除失败'); }
+        };
+
+        // 按钮操作
+        document.getElementById('btn-copy').onclick = () => { textArea.select(); document.execCommand('copy'); showToast('文本已复制'); };
+        document.getElementById('btn-sync').onclick = async () => { await saveText(); isTyping = false; showToast('手动同步完成'); };
+        function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
+
+        init();
+    </script>
+</body>
+</html>
