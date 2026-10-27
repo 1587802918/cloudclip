@@ -168,7 +168,7 @@
             <h2>CloudClip</h2>
             <p>请输入安全密钥以连接云端</p>
             <div class="auth-input-group">
-                <input type="password" id="auth-input" placeholder="••••••" autofocus>
+                <input type="password" id="auth-input" placeholder="访问密码" autocomplete="current-password" autofocus>
                 <button id="auth-btn" class="btn-unlock">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                     安全进入
@@ -178,10 +178,13 @@
         </div>
     </div>
 
-    <div class="dashboard" id="main-container">
+    <div class="dashboard" id="main-container" inert>
         <header>
             <h1>CloudClip.</h1>
-            <span class="status" id="status-indicator">正在握手...</span>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end;">
+                <span class="status" id="status-indicator">未登录</span>
+                <button id="btn-logout" class="pill-btn pill-delete" type="button">退出登录</button>
+            </div>
         </header>
 
         <div class="left-panel">
@@ -198,7 +201,7 @@
                 <div class="file-meta">
                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-color); margin-bottom: 5px;"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
                     <span id="file-name-display">文件名</span>
-                    <span id="file-meta-display" id="file-size-display">大小</span>
+                    <span id="file-meta-display">大小</span>
                     <div class="pill-actions">
                         <a id="file-download-link" class="pill-btn pill-download" download>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -219,7 +222,7 @@
                     <span class="desc" style="font-size: 12px; opacity: 0.7;">单图片覆盖机制</span>
                 </div>
                 <img id="preview-img" src="" alt="预览">
-                <input type="file" id="file-input" hidden accept="image/*">
+                <input type="file" id="file-input" hidden accept="image/png,image/jpeg,image/gif,image/webp,image/avif,image/bmp">
             </div>
         </div>
         
@@ -241,144 +244,6 @@
 
     <div id="toast"></div>
 
-    <script>
-        const ACCESS_CODE = '771102'; 
-        const authInput = document.getElementById('auth-input');
-        const authBtn = document.getElementById('auth-btn');
-        const authError = document.getElementById('auth-error');
-        const textArea = document.getElementById('clipboard-text');
-        const statusIndicator = document.getElementById('status-indicator');
-        const previewImg = document.getElementById('preview-img');
-        const uploadHint = document.getElementById('upload-hint');
-
-        const fileDropZone = document.getElementById('file-drop-zone');
-        const fileInfoArea = document.getElementById('file-info-area');
-        const fileNameDisplay = document.getElementById('file-name-display');
-        const fileMetaDisplay = document.getElementById('file-meta-display');
-        const fileDownloadLink = document.getElementById('file-download-link');
-
-        let socket;
-        let syncTimer;
-        let isTyping = false; 
-
-        // 鉴权逻辑
-        function init() { if (localStorage.getItem('clip_auth') === ACCESS_CODE) unlock(); }
-        function verifyAuth() {
-            if (authInput.value === ACCESS_CODE) {
-                localStorage.setItem('clip_auth', ACCESS_CODE);
-                authBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> 验证成功'; 
-                setTimeout(unlock, 400);
-            } else {
-                authError.style.opacity = '1';
-                authInput.style.borderColor = 'var(--danger-color)';
-                authInput.value = '';
-                authBtn.style.transform = 'translateX(-5px)';
-                setTimeout(() => authBtn.style.transform = 'translateX(5px)', 100);
-                setTimeout(() => authBtn.style.transform = 'translateX(0)', 200);
-                setTimeout(() => { authError.style.opacity = '0'; authInput.style.borderColor = 'var(--border-color)'; }, 2000);
-            }
-        }
-
-        authInput.addEventListener('keypress', e => { if (e.key === 'Enter') verifyAuth(); });
-        authBtn.addEventListener('click', verifyAuth);
-
-        function unlock() {
-            document.getElementById('auth-overlay').classList.add('hidden');
-            document.getElementById('main-container').classList.add('active');
-            fetchData(); connectWebSocket(); 
-        }
-
-        // WebSocket 核心
-        function connectWebSocket() {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            socket = new WebSocket(`${protocol}//${window.location.host}`);
-
-            socket.onopen = () => { statusIndicator.innerHTML = '已连接云端 '; statusIndicator.classList.remove('offline'); };
-            socket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'text') {
-                    if (isTyping) return; 
-                    textArea.value = data.content;
-                    textArea.classList.add('receiving');
-                    setTimeout(() => textArea.classList.remove('receiving'), 500);
-                } else if (data.type === 'image') {
-                    showImage(data.url); showToast('已接收最新图片');
-                } else if (data.type === 'file') {
-                    if (data.url) { showFileInfoOnUI({originalName: data.name, url: data.url}); showToast('已接收最新文件'); } 
-                    else { clearFileInfoOnUI(); showToast('文件已被清空'); }
-                }
-            };
-            socket.onclose = () => { statusIndicator.textContent = '重连中...'; statusIndicator.classList.add('offline'); setTimeout(connectWebSocket, 3000); };
-        }
-
-        // 基础数据加载
-        async function fetchData() {
-            try {
-                const [textRes, imgRes, fileRes] = await Promise.all([ fetch('/api/clip'), fetch('/api/image'), fetch('/api/file_info') ]);
-                const textData = await textRes.json(); const imgData = await imgRes.json(); const fileData = await fileRes.json();
-                textArea.value = textData.content || '';
-                if(imgData.url) showImage(imgData.url);
-                if(fileData) showFileInfoOnUI(fileData);
-            } catch (err) {}
-        }
-
-        // 文本同步逻辑
-        textArea.addEventListener('input', () => {
-            isTyping = true; clearTimeout(syncTimer);
-            syncTimer = setTimeout(async () => { await saveText(); isTyping = false; }, 2000);
-        });
-
-        async function saveText() {
-            statusIndicator.innerHTML = '保存中...';
-            try {
-                await fetch('/api/clip', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: textArea.value }) });
-                statusIndicator.innerHTML = '已云端同步 <span style="font-size:10px; opacity:0.5;">●</span>';
-            } catch(e) { showToast('保存失败 ❌'); }
-        }
-
-        // 图片处理
-        function showImage(url) { previewImg.src = url + '?t=' + new Date().getTime(); previewImg.style.display = 'block'; uploadHint.style.display = 'none'; }
-        document.getElementById('file-input').onchange = async (e) => {
-            const file = e.target.files[0]; if (!file) return;
-            const formData = new FormData(); formData.append('image', file);
-            showToast('上传中...');
-            const res = await fetch('/api/upload', { method: 'POST', body: formData });
-            const data = await res.json(); showImage(data.url); showToast('上传完成');
-        };
-
-        // 文件处理
-        function showFileInfoOnUI(fileData) {
-            fileNameDisplay.textContent = fileData.originalName;
-            if (fileData.size) { fileMetaDisplay.textContent = `${(fileData.size / 1024 / 1024).toFixed(2)} MB`; } 
-            else { fileMetaDisplay.textContent = '准备就绪'; }
-            fileDownloadLink.href = fileData.url; fileDownloadLink.setAttribute('download', fileData.originalName);
-            fileDropZone.style.display = 'none'; fileInfoArea.style.display = 'flex';
-        }
-
-        function clearFileInfoOnUI() { fileInfoArea.style.display = 'none'; fileDropZone.style.display = 'flex'; }
-        
-        document.getElementById('general-file-input').onchange = async (e) => {
-            const file = e.target.files[0]; if (!file) return;
-            const formData = new FormData(); formData.append('file', file);
-            showToast('上传中...');
-            try {
-                const res = await fetch('/api/file_upload', { method: 'POST', body: formData });
-                const data = await res.json();
-                showFileInfoOnUI({originalName: data.name, url: data.url}); showToast('上传完成');
-            } catch (err) { showToast('上传失败'); }
-        };
-
-        document.getElementById('btn-delete-file').onclick = async () => {
-            try { const res = await fetch('/api/file', { method: 'DELETE' }); if (res.ok) { clearFileInfoOnUI(); showToast('文件已删除'); } } 
-            catch(e) { showToast('删除失败'); }
-        };
-
-        // 按钮操作
-        document.getElementById('btn-copy').onclick = () => { textArea.select(); document.execCommand('copy'); showToast('文本已复制'); };
-        document.getElementById('btn-sync').onclick = async () => { await saveText(); isTyping = false; showToast('手动同步完成'); };
-        function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
-
-        init();
-    </script>
+    <script src="/app.js" defer></script>
 </body>
 </html>

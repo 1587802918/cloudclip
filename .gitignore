@@ -1,0 +1,9 @@
+node_modules/
+clipboard.txt
+/public/uploads/
+/public/files/
+.env
+.env.*
+!.env.example
+*.log
+coverage/
